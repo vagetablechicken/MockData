@@ -35,7 +35,6 @@ import picocli.CommandLine.Option;
 import com.google.common.base.Preconditions;
 
 import java.io.File;
-import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.sql.Timestamp;
