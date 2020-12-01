@@ -71,7 +71,12 @@ public class CSVGen {
         try {
             // TODO need to improve
             if (sqlType.equalsIgnoreCase("doris")) {
-                createSql = createSql.substring(0, createSql.indexOf("ENGINE"));
+                if (createSql.contains("ENGINE")) {
+                    createSql = createSql.substring(0, createSql.indexOf("ENGINE"));
+                }
+                // replace ""
+                createSql = createSql.replace('\"', '\'');
+
                 // TODO strim "" is better
                 createSql = createSql.replaceAll("DEFAULT .*?,", ",");
                 createSql = createSql.replace("REPLACE", "");
@@ -94,9 +99,9 @@ public class CSVGen {
         CSVs csvs = csvs();
         for (ColumnDefinition col : columnList) {
             String dataType = col.getColDataType().getDataType();
-            LOG.info("col data type: {}", dataType);
+            LOG.info("col data type: {}", StringUtils.upperCase(dataType));
             // dataType reflection
-            Method findByColType = this.getClass().getMethod("mock" + StringUtils.capitalize(dataType),
+            Method findByColType = this.getClass().getMethod("mock" + StringUtils.upperCase(dataType),
                     CSVs.class, ColumnDefinition.class);
             csvs = (CSVs) findByColType.invoke(this, csvs, col);
         }
@@ -150,6 +155,12 @@ public class CSVGen {
         return csvs.column(ints());
     }
 
+    // BIGINT
+    // 8字节有符号整数，范围[-9223372036854775808, 9223372036854775807]
+    public CSVs mockBIGINT(CSVs csvs, ColumnDefinition col){
+        // TODO need larger bounds
+        return csvs.column(ints());
+    }
     // BOOL, BOOLEAN
     // 与TINYINT一样，0代表false，1代表true
     public CSVs mockBOOL(CSVs csvs, ColumnDefinition col) {
@@ -172,6 +183,11 @@ public class CSVGen {
                 timestamp -> new Timestamp(timestamp).toLocalDateTime()
                         .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))
         ));
+    }
+
+    // DATE: slot size is the same as DATETIME
+    public CSVs mockDATE(CSVs csvs, ColumnDefinition col) {
+        return mockDATETIME(csvs, col);
     }
 
     // VARCHAR(M)
