@@ -15,17 +15,26 @@
 // specific language governing permissions and limitations
 // under the License.
 
+import com.google.common.collect.Maps;
+import net.andreinc.mockneat.abstraction.MockUnit;
 import net.andreinc.mockneat.unit.text.CSVs;
 import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.Map;
+
+import static net.andreinc.mockneat.unit.objects.From.from;
+import static net.andreinc.mockneat.unit.text.Strings.strings;
+import static net.andreinc.mockneat.unit.types.Ints.ints;
+import static net.andreinc.mockneat.unit.types.Longs.longs;
+
 public class CSVGenTest {
     Logger LOG = LoggerFactory.getLogger(CSVGenTest.class);
 
     @Test
-    public void genFromCreateSQL() {
-        String createSql = "CREATE TABLE example_db.table_hash\n" +
+    public void simpleGenData() {
+        String createSql = "CREATE TABLE example_db.table\n" +
                 "(\n" +
                 "k1 TINYINT,\n" +
                 "k2 DECIMAL(10, 2) DEFAULT \"10.5\",\n" +
@@ -41,5 +50,29 @@ public class CSVGenTest {
                 "PROPERTIES (\"storage_type\"=\"column\");";
         CSVs csvs = new CSVGen().genFromCreateSQL(createSql, "doris");
         LOG.info(csvs.val());
+    }
+
+    @Test
+    public void replaceColsInGenData() {
+        String createSql = "CREATE TABLE example_db.table\n" +
+                "(\n" +
+                "k1 TINYINT,\n" +
+                "k2 DECIMAL(10, 2) DEFAULT \"10.5\",\n" +
+                "v1 CHAR(10) REPLACE,\n" +
+                "v2 INT SUM,\n" +
+                "v3 DATETIME,\n" +
+                "v4 VARCHAR(10)\n" +
+                ")\n" +
+                "ENGINE=olap\n" +
+                "AGGREGATE KEY(k1, k2)\n" +
+                "COMMENT \"my first doris table\"\n" +
+                "DISTRIBUTED BY HASH(k1) BUCKETS 32\n" +
+                "PROPERTIES (\"storage_type\"=\"column\");";
+
+        Map<String, MockUnit> replaceCols = Maps.newHashMap();
+        replaceCols.put("v2", ints().from(new int[]{10086}));
+        CSVs csvs = new CSVGen().genFromCreateSQL(createSql, replaceCols, "doris");
+        LOG.info(csvs.val());
+        // csvs.separator("\t").write("test.txt", 1000);
     }
 }

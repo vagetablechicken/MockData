@@ -18,9 +18,11 @@
 import static net.andreinc.mockneat.unit.text.CSVs.csvs;
 import static net.andreinc.mockneat.unit.text.Formatter.fmt;
 import static net.andreinc.mockneat.unit.text.Strings.strings;
+import static net.andreinc.mockneat.unit.types.Doubles.doubles;
 import static net.andreinc.mockneat.unit.types.Ints.ints;
 import static net.andreinc.mockneat.unit.types.Longs.longs;
 
+import net.andreinc.mockneat.abstraction.MockUnit;
 import net.andreinc.mockneat.types.enums.StringType;
 import net.andreinc.mockneat.unit.text.CSVs;
 import net.sf.jsqlparser.parser.CCJSqlParserUtil;
@@ -40,6 +42,7 @@ import java.lang.reflect.Method;
 import java.sql.Timestamp;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 class ArgsParser {
@@ -67,6 +70,10 @@ public class CSVGen {
     Logger LOG = LoggerFactory.getLogger(CSVGen.class);
 
     public CSVs genFromCreateSQL(String createSql, String sqlType) {
+        return genFromCreateSQL(createSql, null, sqlType);
+    }
+
+    public CSVs genFromCreateSQL(String createSql, Map<String, MockUnit> replaceCols, String sqlType) {
         CSVs csvs = null;
         try {
             // TODO need to improve
@@ -79,6 +86,9 @@ public class CSVGen {
 
                 // TODO strim "" is better
                 createSql = createSql.replaceAll("DEFAULT .*?,", ",");
+                createSql = createSql.replaceAll("COMMENT .*?,", ",");
+                createSql = createSql.replaceAll("DEFAULT .*", "");
+                createSql = createSql.replaceAll("COMMENT .*", "");
                 createSql = createSql.replace("REPLACE", "");
                 createSql = createSql.replace("SUM", "");
             }
@@ -87,7 +97,7 @@ public class CSVGen {
             Statement stmt = CCJSqlParserUtil.parse(createSql);
             if (stmt instanceof CreateTable) {
                 List<ColumnDefinition> columnList = ((CreateTable) stmt).getColumnDefinitions();
-                csvs = createCSVColumns(columnList);
+                csvs = createCSVColumns(columnList, replaceCols);
             }
         } catch (Exception e) {
             e.printStackTrace();
@@ -95,16 +105,28 @@ public class CSVGen {
         return csvs;
     }
 
-    private CSVs createCSVColumns(List<ColumnDefinition> columnList) throws NoSuchMethodException, InvocationTargetException, IllegalAccessException {
+    private CSVs createCSVColumns(List<ColumnDefinition> columnList, Map<String, MockUnit> replaceCols) throws NoSuchMethodException, InvocationTargetException, IllegalAccessException {
         CSVs csvs = csvs();
         for (ColumnDefinition col : columnList) {
-            String dataType = col.getColDataType().getDataType();
-            LOG.info("col data type: {}", StringUtils.upperCase(dataType));
-            // dataType reflection
-            Method findByColType = this.getClass().getMethod("mock" + StringUtils.upperCase(dataType),
-                    CSVs.class, ColumnDefinition.class);
-            csvs = (CSVs) findByColType.invoke(this, csvs, col);
+            String name = col.getColumnName();
+            // col.getColumnName() may contains ``
+            if (!name.isEmpty() && !Character.isLetter(name.charAt(0))) {
+                name = name.substring(1, name.length() - 1);
+            }
+            MockUnit mockU = replaceCols != null ? replaceCols.get(name) : null;
+            if (mockU != null) {
+                LOG.info("col {} replace {}", name, mockU);
+                csvs = csvs.column(mockU);
+            } else {
+                String dataType = col.getColDataType().getDataType();
+                LOG.info("col {} data type: {}", name, StringUtils.upperCase(dataType));
+                // dataType reflection
+                Method findByColType = this.getClass().getMethod("mock" + StringUtils.upperCase(dataType),
+                        CSVs.class, ColumnDefinition.class);
+                csvs = (CSVs) findByColType.invoke(this, csvs, col);
+            }
         }
+        LOG.info("col size: {}", columnList.size());
         LOG.info("sample: {}", csvs.val());
         return csvs;
     }
@@ -157,10 +179,11 @@ public class CSVGen {
 
     // BIGINT
     // 8字节有符号整数，范围[-9223372036854775808, 9223372036854775807]
-    public CSVs mockBIGINT(CSVs csvs, ColumnDefinition col){
+    public CSVs mockBIGINT(CSVs csvs, ColumnDefinition col) {
         // TODO need larger bounds
         return csvs.column(ints());
     }
+
     // BOOL, BOOLEAN
     // 与TINYINT一样，0代表false，1代表true
     public CSVs mockBOOL(CSVs csvs, ColumnDefinition col) {
@@ -201,6 +224,10 @@ public class CSVGen {
         return csvs.column(strings().size(ints().rangeClosed(1, m)));
     }
 
+    public CSVs mockDOUBLE(CSVs csvs, ColumnDefinition col) {
+        return csvs.column(doubles());
+    }
+
     public static void main(String[] args) {
         ArgsParser argsParser = new ArgsParser();
         new CommandLine(argsParser).parseArgs(args);
@@ -212,7 +239,7 @@ public class CSVGen {
         CSVGen gen = new CSVGen();
         CSVs csvs = null;
         if (argsParser.createSql != null) {
-            csvs = gen.genFromCreateSQL(argsParser.createSql, argsParser.sqlType);
+            csvs = gen.genFromCreateSQL(argsParser.createSql, null, argsParser.sqlType);
         }
         if (argsParser.file == null || argsParser.file.length() == 0) {
             return;
@@ -223,7 +250,7 @@ public class CSVGen {
         // MacOS can't send the right sep in curl, so use default sep '\t'
         Objects.requireNonNull(csvs).separator("\t").write(argsParser.file, argsParser.lineNum);
 
-        // TODO: can't get output now
+        // TODO: stream load immediately?
 //        if (argsParser.url != null && argsParser.url.length() > 0) {
 //            Timestamp timestamp = new Timestamp(System.currentTimeMillis());
 //            ProcessBuilder pb = new ProcessBuilder("curl", "--location-trusted", "-u ", "-T " + argsParser.file,

@@ -1,2 +1,4 @@
 data/
 .idea/
+target/
+.DS_Store
