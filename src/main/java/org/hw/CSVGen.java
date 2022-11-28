@@ -14,6 +14,7 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
+package org.hw;
 
 import static net.andreinc.mockneat.unit.text.CSVs.csvs;
 import static net.andreinc.mockneat.unit.text.Formatter.fmt;
@@ -36,7 +37,6 @@ import picocli.CommandLine;
 import picocli.CommandLine.Option;
 import com.google.common.base.Preconditions;
 
-import java.io.File;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.sql.Timestamp;
@@ -46,20 +46,23 @@ import java.util.Map;
 import java.util.Objects;
 
 class ArgsParser {
-    @Option(names = "-sql", description = "create_sql")
+    @Option(names = "-sql", description = "create table sql")
     String createSql;
 
-    @Option(names = "-t", description = "sql type(mysql, doris)")
-    String sqlType = "doris";
+    @Option(names = "-t", description = "sql type(mysql, doris)", defaultValue = "doris")
+    String sqlType;
 
     @Option(names = "-l", required = true, description = "how many lines we wanna gen")
     int lineNum;
 
-    @Option(names = {"-f", "--file"}, description = "the output csv file")
+    @Option(names = {"-f", "--file"}, required = true, description = "the output csv file")
     String file;
 
 //    @Option(names = "-to", description = "the dest http url(unsupported)")
 //    String url;
+
+    @Option(names = {"-s", "--sep"}, description = "the seperator", defaultValue = "\t")
+    String sep;
 
     @Option(names = {"-h", "--help"}, usageHelp = true, description = "display a help message")
     boolean helpRequested = false;
@@ -224,6 +227,11 @@ public class CSVGen {
         return csvs.column(strings().size(ints().rangeClosed(1, m)));
     }
 
+    // no max length, use 1M TODO
+    public CSVs mockSTRING(CSVs csvs, ColumnDefinition col) {
+        return csvs.column(strings().size(ints().rangeClosed(1, 1024)));
+    }
+
     public CSVs mockDOUBLE(CSVs csvs, ColumnDefinition col) {
         return csvs.column(doubles());
     }
@@ -236,19 +244,24 @@ public class CSVGen {
             return;
         }
 
-        CSVGen gen = new CSVGen();
-        CSVs csvs = null;
-        if (argsParser.createSql != null) {
-            csvs = gen.genFromCreateSQL(argsParser.createSql, null, argsParser.sqlType);
-        }
-        if (argsParser.file == null || argsParser.file.length() == 0) {
+        if (argsParser.createSql == null) {
+            System.out.println("empty create table sql");
             return;
         }
 
-        File f = new File(argsParser.file);
-        Preconditions.checkState(f.delete());
+        CSVGen gen = new CSVGen();
+        CSVs csvs = gen.genFromCreateSQL(argsParser.createSql, null, argsParser.sqlType);
+
+        if (argsParser.file == null || argsParser.file.length() == 0) {
+            System.out.println("empty dst file");
+            return;
+        }
+
+        // File f = new File(argsParser.file);
+        // Preconditions.checkState(!f.exists());
         // MacOS can't send the right sep in curl, so use default sep '\t'
-        Objects.requireNonNull(csvs).separator("\t").write(argsParser.file, argsParser.lineNum);
+        // overwrite
+        Objects.requireNonNull(csvs).separator(argsParser.sep).write(argsParser.file, argsParser.lineNum);
 
         // TODO: stream load immediately?
 //        if (argsParser.url != null && argsParser.url.length() > 0) {
